@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <style>
+      div {
+        width: 100px;
+        height: 100px;
+        background: rgb(148, 224, 193);
+        position: absolute;
+        cursor: grab;
+      }
+    </style>
+  </head>
+  <body>
+    <div></div>
+    <!-- <script>
+      let dom =document.querySelector('div')
+      div.onclick=du
+    </script> -->
+    <script>
+      let dom = document.querySelector("div");
+
+      // 鼠标按下
+      dom.onmousedown = function (e) {
+      //记录鼠标相对于元素的位置
+        let x = e.pageX - dom.offsetLeft;
+        let y = e.pageY - dom.offsetTop;
+        //鼠标滑动
+        document.onmousemove = function (e) {
+          let xx = e.pageX;
+          let yy = e.pageY;
+          if (x !== xx || y !== yy) {
+            dom.style.left = xx - x + "px";
+            dom.style.top = yy - y + "px";
+          }
+        };
+        //鼠标松开
+        document.onmouseup = function () {
+          this.onmouseup = null;
+          this.onmousemove = null;
+        };
+      };
+    </script>
+  </body>
+</html>
