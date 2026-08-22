@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>多标签页通信 · 方案 </title>
+  <link rel="stylesheet" href="common.css">
+</head>
+<body>
+  <h1>📡 多标签页通信 · 六种方案</h1>
+  <p>点击按钮切换方案，打开多个标签页测试通信效果。</p>
+
+  <nav id="nav">
+    <button data-demo="localstorage" class="active">💾 LocalStorage</button>
+    <button data-demo="broadcast">📶 Broadcast</button>
+    <button data-demo="sharedworker">🧠 SharedWorker</button>
+    <button data-demo="serviceworker">⚙️ Service Worker</button>
+    <button data-demo="postmessage">📤 postMessage</button>
+    <button data-demo="websocket">🌐 WebSocket</button>
+    <span id="global-tab-id">🏷️ 标签ID: <strong id="tab-id-display">加载中...</strong></span>
+  </nav>
+
+  <div id="panel-container"></div>
+
+  <!-- 提示 WebSocket 需启动服务 -->
+  <div id="ws-tip" style="display:none; margin-top:1rem; padding:1rem; background:#fef9e7; border-radius:8px; border-left:4px solid #f1c40f;">
+    💡 WebSocket 方案需要启动后端服务器：<br>
+    <code style="background:#eef2f7; padding:0.2rem 0.6rem; border-radius:4px;">npm run server</code>
+    或 <code style="background:#eef2f7; padding:0.2rem 0.6rem; border-radius:4px;">node server/server.js</code>
+  </div>
+
+  <script type="module">
+    // ---------- 面板模板 ----------
+    const PANELS = {
+      localstorage: `
+        <h2>💾 LocalStorage + storage 事件</h2>
+        <div><label>发送消息</label><input type="text" id="ls-input" placeholder="输入消息..."><button id="ls-send">发送</button></div>
+        <div><label>消息记录</label><div id="ls-msgs" class="msg-box"></div></div>
+        <div class="note">📌 打开两个标签页，任意发送，另一个即时收到（基于 storage 事件）。兼容 IE8+</div>
+      `,
+      broadcast: `
+        <h2>📶 Broadcast Channel</h2>
+        <div><label>发送消息</label><input type="text" id="bc-input" placeholder="输入消息..."><button id="bc-send">发送</button></div>
+        <div><label>消息记录</label><div id="bc-msgs" class="msg-box"></div></div>
+        <div class="note">📌 专用广播通道，纯内存通信，延迟极低。Chrome 54+</div>
+      `,
+      sharedworker: `
+        <h2>🧠 SharedWorker</h2>
+        <div><label>发送消息</label><input type="text" id="sw-input" placeholder="输入消息..."><button id="sw-send">发送</button></div>
+        <div><label>消息记录</label><div id="sw-msgs" class="msg-box"></div></div>
+        <div class="note">📌 共享 Worker 进程，所有标签页共用，适合管理 WebSocket 连接。</div>
+      `,
+      serviceworker: `
+        <h2>⚙️ Service Worker</h2>
+        <div>
+          <button id="svc-register" class="secondary">注册 Service Worker</button>
+          <span id="svc-status" class="status">未注册</span>
+        </div>
+        <div>
+          <label>发送消息</label>
+          <input type="text" id="svc-input" placeholder="输入消息..." disabled>
+          <button id="svc-send" disabled>发送</button>
+        </div>
+        <div><label>消息记录</label><div id="svc-msgs" class="msg-box"></div></div>
+        <div class="note">📌 先点击“注册”，之后发送的消息会通过 SW 广播给所有标签页。<br>⚠️ 仅在 localhost 或 HTTPS 下工作。</div>
+      `,
+      postmessage: `
+        <h2>📤 window.postMessage（父子窗口）</h2>
+        <div><button id="pm-open">打开子窗口</button></div>
+        <div>
+          <label>发送消息给子窗口</label>
+          <input type="text" id="pm-input" placeholder="输入消息...">
+          <button id="pm-send">发送</button>
+        </div>
+        <div><label>消息记录</label><div id="pm-msgs" class="msg-box"></div></div>
+        <div class="note">📌 点击“打开子窗口”，然后发送消息，子窗口会回复确认。</div>
+      `,
+      websocket: `
+        <h2>🌐 WebSocket（自建广播服务器）</h2>
+        <div>
+          <button id="ws-connect">连接</button>
+          <button id="ws-disconnect" class="secondary" disabled>断开</button>
+          <span id="ws-status" class="status">未连接</span>
+        </div>
+        <div>
+          <label>发送消息</label>
+          <input type="text" id="ws-input" placeholder="输入消息..." disabled>
+          <button id="ws-send" disabled>发送</button>
+        </div>
+        <div><label>消息记录</label><div id="ws-msgs" class="msg-box"></div></div>
+        <div class="note">
+          📌 需要先启动 WebSocket 服务器：<br>
+          <code style="background:#eef2f7;padding:0.2rem 0.6rem;border-radius:4px;">npm run server</code>
+          <br>服务器会广播所有消息给所有连接的客户端，实现真正的多标签页通信。
+        </div>
+      `
+    };
+
+    // ---------- 标签页 ID 管理 ----------
+    function getTabId() {
+      if (!window._tabId) {
+        window._tabId = 'tab_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+      }
+      return window._tabId;
+    }
+
+    function displayTabId() {
+      const el = document.getElementById('tab-id-display');
+      if (el) el.textContent = getTabId();
+    }
+    displayTabId();
+
+    // ---------- 加载 Demo ----------
+    const loaded = new Map();
+
+    async function loadDemo(name) {
+      const container = document.getElementById('panel-container');
+      container.innerHTML = PANELS[name];
+
+      const tip = document.getElementById('ws-tip');
+      tip.style.display = name === 'websocket' ? 'block' : 'none';
+
+      if (loaded.has(name)) {
+        const mod = loaded.get(name);
+        if (mod?.init) mod.init();
+        return;
+      }
+
+      try {
+        const module = await import(`./modules/${name}.js`);
+        loaded.set(name, module);
+        if (module.init) module.init();
+      } catch (err) {
+        console.error(`加载 ${name} 失败:`, err);
+        alert(`加载 ${name} 模块失败，请检查文件是否存在。`);
+      }
+    }
+
+    document.querySelectorAll('#nav button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#nav button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        loadDemo(btn.dataset.demo);
+      });
+    });
+
+    loadDemo('localstorage');
+  </script>
+</body>
+</html>

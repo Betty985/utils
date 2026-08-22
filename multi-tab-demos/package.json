@@ -1,0 +1,13 @@
+{
+  "name": "multi-tab-demos",
+  "version": "1.0.0",
+  "description": "多标签页通信方案  - 含 WebSocket 服务器",
+  "scripts": {
+    "start": "node server/server.js & npx serve .",
+    "server": "node server/server.js",
+    "dev": "npx serve ."
+  },
+  "devDependencies": {
+    "ws": "^8.14.2"
+  }
+}
